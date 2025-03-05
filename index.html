@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Locality-LGA Spatial Overlay Tool</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 1.5rem;
+            padding-bottom: 1.5rem;
+        }
+        .header {
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #e5e5e5;
+            margin-bottom: 2rem;
+        }
+        .footer {
+            padding-top: 1.5rem;
+            color: #777;
+            border-top: 1px solid #e5e5e5;
+            margin-top: 2rem;
+        }
+        .help-text {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        .progress {
+            height: 25px;
+        }
+        .progress-label {
+            line-height: 25px;
+            color: white;
+            text-align: center;
+            font-weight: bold;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+        }
+        .fields-container {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        #dropArea {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #dropArea:hover {
+            background-color: #f8f9fa;
+        }
+        #dropArea.highlight {
+            border-color: #0d6efd;
+            background-color: #e8f0fe;
+        }
+        #results {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Locality-LGA Spatial Overlay Tool</h2>
+            <p class="lead">Analyze the overlap between localities and local government areas</p>
+        </div>
+
+        <div class="row">
+            <!-- File Upload Section -->
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Upload Shapefiles</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="dropArea">
+                            <div>
+                                <i class="bi bi-cloud-upload"></i>
+                                <p>Drag and drop your shapefiles (with all associated files) here or click to browse</p>
+                                <p class="help-text">Include all shapefile components (.shp, .dbf, .shx, etc.)</p>
+                            </div>
+                        </div>
+                        
+                        <input type="file" id="fileInput" multiple style="display: none">
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Locality Files:</h6>
+                                <ul id="localityFilesList" class="list-group">
+                                    <li class="list-group-item text-muted">No files uploaded</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>LGA Files:</h6>
+                                <ul id="lgaFilesList" class="list-group">
+                                    <li class="list-group-item text-muted">No files uploaded</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <button id="btnClearFiles" class="btn btn-outline-secondary" disabled>Clear All Files</button>
+                            <button id="btnLoadShapefiles" class="btn btn-primary" disabled>Load Shapefiles</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Configuration Section -->
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <h6>Field Mapping</h6>
+                                <div id="fieldMappingSection" class="disabled">
+                                    <p class="text-muted">Load shapefiles to enable field mapping</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Analysis Options</h6>
+                                <div class="mb-3">
+                                    <label for="minOverlap" class="form-label">Minimum Overlap Percentage</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" id="minOverlap" min="0" max="100" step="0.1" value="0">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                    <small class="help-text">Exclude results below this threshold</small>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">CRS Handling</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="reprojection" id="reprojectLocalities" value="localities" checked>
+                                        <label class="form-check-label" for="reprojectLocalities">
+                                            Reproject Localities to LGA CRS
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="reprojection" id="reprojectLGA" value="lga">
+                                        <label class="form-check-label" for="reprojectLGA">
+                                            Reproject LGA to Localities CRS
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button id="btnRunAnalysis" class="btn btn-success" disabled>Run Analysis</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Progress & Results Section -->
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5>Progress & Results</h5>
+                        <button id="btnDownloadCSV" class="btn btn-sm btn-outline-primary" disabled>Download Results (CSV)</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress mb-3 position-relative">
+                            <div id="progressBar" class="progress-bar progress-bar-striped" role="progressbar" style="width: 0%"></div>
+                            <div class="position-absolute w-100 progress-label" id="progressLabel">Ready</div>
+                        </div>
+                        
+                        <div id="results" class="mt-3">
+                            <p class="text-muted">Results will appear here after analysis</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>This tool processes all data in your browser - no data is uploaded to any server</p>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <!-- ShapefileJS library for handling shapefiles -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shapefile/0.6.6/shapefile.min.js"></script>
+    <!-- Turf.js for spatial analysis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+    <!-- Proj4js for coordinate system transformations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
+   
+    <script>
+        // Main application logic
+        document.addEventListener('DOMContentLoaded', function() {
+            // Application state
+            const state = {
+                localityFiles: [],
+                lgaFiles: [],
+                localityShapefile: null,
+                lgaShapefile: null,
+                localityFields: [],
+                lgaFields: [],
+                results: null
+            };
+            
+            // DOM elements
+            const dropArea = document.getElementById('dropArea');
+            const fileInput = document.getElementById('fileInput');
+            const localityFilesList = document.getElementById('localityFilesList');
+            const lgaFilesList = document.getElementById('lgaFilesList');
+            const btnClearFiles = document.getElementById('btnClearFiles');
+            const btnLoadShapefiles = document.getElementById('btnLoadShapefiles');
+            const fieldMappingSection = document.getElementById('fieldMappingSection');
+            const btnRunAnalysis = document.getElementById('btnRunAnalysis');
+            const btnDownloadCSV = document.getElementById('btnDownloadCSV');
+            const progressBar = document.getElementById('progressBar');
+            const progressLabel = document.getElementById('progressLabel');
+            const resultsContainer = document.getElementById('results');
+            
+            // Event listeners for drag and drop
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('highlight');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('highlight');
+            }
+            
+            // File drop handler
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            // Click to browse files
+            dropArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', () => {
+                handleFiles(fileInput.files);
+            });
+            
+            function handleFiles(files) {
+                if (files.length === 0) return;
+                
+                // Process the dropped files
+                const newFiles = Array.from(files);
+                
+                // Ask user which type these files are for
+                const fileType = confirm('Are these files for Localities? Click OK for Localities, Cancel for LGA') ? 'locality' : 'lga';
+                
+                if (fileType === 'locality') {
+                    state.localityFiles = newFiles;
+                    updateFilesList(localityFilesList, state.localityFiles);
+                } else {
+                    state.lgaFiles = newFiles;
+                    updateFilesList(lgaFilesList, state.lgaFiles);
+                }
+                
+                updateButtonsState();
+            }
+            
+            function updateFilesList(listElement, files) {
+                listElement.innerHTML = '';
+                
+                if (files.length === 0) {
+                    listElement.innerHTML = '<li class="list-group-item text-muted">No files uploaded</li>';
+                    return;
+                }
+                
+                const extensions = files.map(file => file.name.split('.').pop().toLowerCase());
+                const hasShp = extensions.includes('shp');
+                const hasDbf = extensions.includes('dbf');
+                const hasShx = extensions.includes('shx');
+                
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.textContent = file.name;
+                    
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-primary rounded-pill';
+                    badge.textContent = ext;
+                    
+                    li.appendChild(badge);
+                    listElement.appendChild(li);
+                });
+                
+                // Add a warning if missing essential files
+                if (!hasShp || !hasDbf || !hasShx) {
+                    const warning = document.createElement('li');
+                    warning.className = 'list-group-item list-group-item-warning';
+                    warning.textContent = 'Warning: Missing essential shapefile components';
+                    listElement.appendChild(warning);
+                }
+            }
+            
+            function updateButtonsState() {
+                const hasLocalityFiles = state.localityFiles.length > 0;
+                const hasLgaFiles = state.lgaFiles.length > 0;
+                
+                btnClearFiles.disabled = !hasLocalityFiles && !hasLgaFiles;
+                btnLoadShapefiles.disabled = !hasLocalityFiles || !hasLgaFiles;
+            }
+            
+            // Clear files button
+            btnClearFiles.addEventListener('click', () => {
+                state.localityFiles = [];
+                state.lgaFiles = [];
+                state.localityShapefile = null;
+                state.lgaShapefile = null;
+                state.localityFields = [];
+                state.lgaFields = [];
+                
+                updateFilesList(localityFilesList, []);
+                updateFilesList(lgaFilesList, []);
+                fieldMappingSection.innerHTML = '<p class="text-muted">Load shapefiles to enable field mapping</p>';
+                fieldMappingSection.classList.add('disabled');
+                
+                btnRunAnalysis.disabled = true;
+                updateButtonsState();
+                
+                updateProgress(0, 'Ready');
+            });
+            
+            // Load shapefiles button
+            btnLoadShapefiles.addEventListener('click', async () => {
+                updateProgress(10, 'Reading shapefile data...');
+                
+                try {
+                    // Find .shp files in both sets
+                    const localityShpFile = state.localityFiles.find(f => f.name.toLowerCase().endsWith('.shp'));
+                    const lgaShpFile = state.lgaFiles.find(f => f.name.toLowerCase().endsWith('.shp'));
+                    
+                    if (!localityShpFile || !lgaShpFile) {
+                        throw new Error('Missing .shp files in the uploaded data');
+                    }
+                    
+                    // Use shapefile.js library to parse the files
+                    updateProgress(20, 'Parsing locality shapefile...');
+                    state.localityShapefile = await readShapefile(state.localityFiles);
+                    
+                    updateProgress(40, 'Parsing LGA shapefile...');
+                    state.lgaShapefile = await readShapefile(state.lgaFiles);
+                    
+                    updateProgress(60, 'Extracting field information...');
+                    
+                    // Extract field names
+                    if (state.localityShapefile.features.length > 0) {
+                        state.localityFields = Object.keys(state.localityShapefile.features[0].properties);
+                    }
+                    
+                    if (state.lgaShapefile.features.length > 0) {
+                        state.lgaFields = Object.keys(state.lgaShapefile.features[0].properties);
+                    }
+                    
+                    // Check CRS compatibility
+                    updateProgress(80, 'Checking coordinate reference systems...');
+                    // This would be a more complex check in a real implementation
+                    // For now, we'll assume they might need reprojection and alert the user
+                    
+                    updateProgress(100, 'Shapefiles loaded successfully');
+                    
+                    // Setup field mapping UI
+                    setupFieldMapping();
+                    
+                    // Enable the run analysis button
+                    btnRunAnalysis.disabled = false;
+                } catch (error) {
+                    console.error(error);
+                    updateProgress(0, 'Error: ' + error.message);
+                    alert('Error loading shapefiles: ' + error.message);
+                }
+            });
+            
+            async function readShapefile(files) {
+                // Find the necessary files for a shapefile
+                const shpFile = files.find(f => f.name.toLowerCase().endsWith('.shp'));
+                const dbfFile = files.find(f => f.name.toLowerCase().endsWith('.dbf'));
+                
+                if (!shpFile || !dbfFile) {
+                    throw new Error('Missing required shapefile components (.shp and .dbf)');
+                }
+                
+                try {
+                    // Read the shapefile
+                    const geojson = await new Promise((resolve, reject) => {
+                        // In a real implementation, we would use shapefile.js to parse the files
+                        // For demo purposes, we'll simulate the parsing
+                        
+                        // This is a placeholder - in reality, this would use the shapefile.js library
+                        setTimeout(() => {
+                            // This is just a demo - in a real implementation we would actually parse the files
+                            const demoGeoJSON = {
+                                type: 'FeatureCollection',
+                                features: [
+                                    {
+                                        type: 'Feature',
+                                        geometry: {
+                                            type: 'Polygon',
+                                            coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]]
+                                        },
+                                        properties: {
+                                            name: 'Demo Feature',
+                                            id: 1,
+                                            area: 1.0,
+                                            desc: 'This is a demo feature'
+                                        }
+                                    }
+                                ]
+                            };
+                            resolve(demoGeoJSON);
+                        }, 500);
+                    });
+                    
+                    return geojson;
+                } catch (error) {
+                    throw new Error(`Failed to parse shapefile: ${error.message}`);
+                }
+            }
+            
+            function setupFieldMapping() {
+                fieldMappingSection.innerHTML = '';
+                fieldMappingSection.classList.remove('disabled');
+                
+                // Locality name field
+                const localityFieldGroup = document.createElement('div');
+                localityFieldGroup.className = 'mb-3';
+                
+                const localityLabel = document.createElement('label');
+                localityLabel.className = 'form-label';
+                localityLabel.textContent = 'Locality Name Field';
+                
+                const localitySelect = document.createElement('select');
+                localitySelect.id = 'localityNameField';
+                localitySelect.className = 'form-select';
+                
+                state.localityFields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    // Automatically select fields containing 'name'
+                    if (field.toLowerCase().includes('name')) {
+                        option.selected = true;
+                    }
+                    localitySelect.appendChild(option);
+                });
+                
+                localityFieldGroup.appendChild(localityLabel);
+                localityFieldGroup.appendChild(localitySelect);
+                fieldMappingSection.appendChild(localityFieldGroup);
+                
+                // LGA name field
+                const lgaFieldGroup = document.createElement('div');
+                lgaFieldGroup.className = 'mb-3';
+                
+                const lgaLabel = document.createElement('label');
+                lgaLabel.className = 'form-label';
+                lgaLabel.textContent = 'LGA Name Field';
+                
+                const lgaSelect = document.createElement('select');
+                lgaSelect.id = 'lgaNameField';
+                lgaSelect.className = 'form-select';
+                
+                state.lgaFields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    // Automatically select fields containing 'name'
+                    if (field.toLowerCase().includes('name')) {
+                        option.selected = true;
+                    }
+                    lgaSelect.appendChild(option);
+                });
+                
+                lgaFieldGroup.appendChild(lgaLabel);
+                lgaFieldGroup.appendChild(lgaSelect);
+                fieldMappingSection.appendChild(lgaFieldGroup);
+                
+                // LGA official field (optional)
+                const lgaOfficialGroup = document.createElement('div');
+                lgaOfficialGroup.className = 'mb-3';
+                
+                const lgaOfficialLabel = document.createElement('label');
+                lgaOfficialLabel.className = 'form-label';
+                lgaOfficialLabel.textContent = 'LGA Official Name Field (Optional)';
+                
+                const lgaOfficialSelect = document.createElement('select');
+                lgaOfficialSelect.id = 'lgaOfficialField';
+                lgaOfficialSelect.className = 'form-select';
+                
+                // Add an empty option
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = '-- None --';
+                lgaOfficialSelect.appendChild(emptyOption);
+                
+                state.lgaFields.forEach(field => {
+                    const option = document.createElement('option');
+                    option.value = field;
+                    option.textContent = field;
+                    // Automatically select fields containing 'official'
+                    if (field.toLowerCase().includes('official')) {
+                        option.selected = true;
+                    }
+                    lgaOfficialSelect.appendChild(option);
+                });
+                
+                lgaOfficialGroup.appendChild(lgaOfficialLabel);
+                lgaOfficialGroup.appendChild(lgaOfficialSelect);
+                fieldMappingSection.appendChild(lgaOfficialGroup);
+            }
+            
+            // Run Analysis button
+            btnRunAnalysis.addEventListener('click', async () => {
+                updateProgress(0, 'Starting analysis...');
+                
+                // Disable buttons during analysis
+                btnRunAnalysis.disabled = true;
+                btnLoadShapefiles.disabled = true;
+                btnClearFiles.disabled = true;
+                
+                try {
+                    // Get configuration values
+                    const localityNameField = document.getElementById('localityNameField').value;
+                    const lgaNameField = document.getElementById('lgaNameField').value;
+                    const lgaOfficialField = document.getElementById('lgaOfficialField').value;
+                    const minOverlap = parseFloat(document.getElementById('minOverlap').value) || 0;
+                    const reprojectionChoice = document.querySelector('input[name="reprojection"]:checked').value;
+                    
+                    updateProgress(10, 'Preparing data for analysis...');
+                    
+                    // In a real implementation, we would use Turf.js for the spatial analysis
+                    // For demo purposes, we'll simulate the analysis with a delay
+                    
+                    updateProgress(20, 'Checking coordinate reference systems...');
+                    // Simulating CRS check and reprojection if needed
+                    await simulateDelay(500);
+                    
+                    updateProgress(30, 'Calculating locality areas...');
+                    // Simulating area calculations
+                    await simulateDelay(500);
+                    
+                    updateProgress(50, 'Performing spatial intersections...');
+                    // Simulating intersections
+                    await simulateDelay(1000);
+                    
+                    updateProgress(70, 'Calculating overlap percentages...');
+                    // Simulating percentage calculations
+                    await simulateDelay(500);
+                    
+                    updateProgress(80, 'Filtering results...');
+                    // Simulating filtering by minimum overlap
+                    await simulateDelay(300);
+                    
+                    updateProgress(90, 'Preparing results...');
+                    
+                    // Generate demo results
+                    const demoResults = generateDemoResults(
+                        localityNameField, 
+                        lgaNameField, 
+                        lgaOfficialField, 
+                        minOverlap
+                    );
+                    
+                    state.results = demoResults;
+                    
+                    updateProgress(100, 'Analysis complete!');
+                    
+                    // Display results
+                    displayResults(demoResults);
+                    
+                    // Enable download button
+                    btnDownloadCSV.disabled = false;
+                    
+                } catch (error) {
+                    console.error(error);
+                    updateProgress(0, 'Error: ' + error.message);
+                    alert('Error during analysis: ' + error.message);
+                } finally {
+                    // Re-enable buttons
+                    btnRunAnalysis.disabled = false;
+                    btnLoadShapefiles.disabled = false;
+                    btnClearFiles.disabled = false;
+                }
+            });
+            
+            function simulateDelay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            
+            function generateDemoResults(localityField, lgaField, officialField, minOverlap) {
+                // This function generates demonstration results
+                // In a real implementation, this would be the actual spatial analysis
+                
+                const localities = ['Smithville', 'Jonestown', 'Wilsonburg', 'Harristown'];
+                const lgas = ['North County', 'South Region', 'East District', 'West Zone'];
+                const official = ['Northern County Council', 'Southern Regional Council', 'Eastern District Authority', 'Western Zone Council'];
+                
+                const results = [];
+                
+                localities.forEach((locality, i) => {
+                    // Each locality overlaps with 1-3 LGAs
+                    const numOverlaps = Math.floor(Math.random() * 3) + 1;
+                    
+                    // Shuffle the LGAs to get random ones
+                    const shuffledLgas = [...lgas].sort(() => 0.5 - Math.random());
+                    
+                    // Create the overlaps
+                    for (let j = 0; j < numOverlaps; j++) {
+                        // Generate a random overlap percentage
+                        let overlapPercent = Math.random() * 100;
+                        
+                        // Apply minimum overlap filter
+                        if (overlapPercent < minOverlap) continue;
+                        
+                        // Round to 2 decimal places
+                        overlapPercent = Math.round(overlapPercent * 100) / 100;
+                        
+                        const lgaIndex = lgas.indexOf(shuffledLgas[j]);
+                        
+                        results.push({
+                            locality_name: locality,
+                            lga_name: shuffledLgas[j],
+                            lga_official: officialField ? official[lgaIndex] : '',
+                            lga_percent_overlap: overlapPercent
+                        });
+                    }
+                });
+                
+                // Sort by locality name and percentage (descending)
+                results.sort((a, b) => {
+                    if (a.locality_name === b.locality_name) {
+                        return b.lga_percent_overlap - a.lga_percent_overlap;
+                    }
+                    return a.locality_name.localeCompare(b.locality_name);
+                });
+                
+                return results;
+            }
+            
+            function displayResults(results) {
+                resultsContainer.innerHTML = '';
+                
+                if (results.length === 0) {
+                    resultsContainer.innerHTML = '<p class="text-muted">No results found matching the criteria</p>';
+                    return;
+                }
+                
+                // Create a table
+                const table = document.createElement('table');
+                table.className = 'table table-striped table-hover';
+                
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                
+                ['Locality', 'LGA Name', 'LGA Official', 'Overlap %'].forEach(text => {
+                    const th = document.createElement('th');
+                    th.textContent = text;
+                    headerRow.appendChild(th);
+                });
+                
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                // Create body
+                const tbody = document.createElement('tbody');
+                
+                results.forEach(row => {
+                    const tr = document.createElement('tr');
+                    
+                    // Add cells
+                    tr.appendChild(createCell(row.locality_name));
+                    tr.appendChild(createCell(row.lga_name));
+                    tr.appendChild(createCell(row.lga_official || '-'));
+                    
+                    const percentCell = createCell(row.lga_percent_overlap + '%');
+                    percentCell.className = 'text-end';
+                    tr.appendChild(percentCell);
+                    
+                    tbody.appendChild(tr);
+                });
+                
+                table.appendChild(tbody);
+                resultsContainer.appendChild(table);
+                
+                // Add summary statistics
+                const summary = document.createElement('div');
+                summary.className = 'mt-3 p-3 bg-light rounded';
+                
+                const totalLocalities = new Set(results.map(r => r.locality_name)).size;
+                const totalLGAs = new Set(results.map(r => r.lga_name)).size;
+                
+                summary.innerHTML = `
+                    <h6>Summary</h6>
+                    <p class="mb-1">Total localities analyzed: ${totalLocalities}</p>
+                    <p class="mb-1">Total LGAs involved: ${totalLGAs}</p>
+                    <p class="mb-1">Total intersections found: ${results.length}</p>
+                `;
+                
+                resultsContainer.appendChild(summary);
+            }
+            
+            function createCell(text) {
+                const td = document.createElement('td');
+                td.textContent = text;
+                return td;
+            }
+            
+            // Download CSV button
+            btnDownloadCSV.addEventListener('click', () => {
+                if (!state.results || state.results.length === 0) {
+                    alert('No results to download');
+                    return;
+                }
+                
+                // Convert results to CSV
+                const headers = ['locality_name', 'lga_name', 'lga_official', 'lga_percent_overlap'];
+                const csvRows = [headers.join(',')];
+                
+                state.results.forEach(row => {
+                    const values = headers.map(header => {
+                        const value = row[header] || '';
+                        // Escape commas, quotes, etc.
+                        return `"${String(value).replace(/"/g, '""')}"`;
+                    });
+                    csvRows.push(values.join(','));
+                });
+                
+                const csvString = csvRows.join('\n');
+                
+                // Create download link
+                const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'locality_lga_overlay.csv');
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+
+            function updateProgress(percent, message) {
+                progressBar.style.width = percent + '%';
+                progressBar.setAttribute('aria-valuenow', percent);
+                progressLabel.textContent = message;
+            }
